@@ -1,0 +1,262 @@
+---
+title: 'Market Basket Analysis'
+author: "Wedam Nyaaba"
+date: "January 12, 2017"
+output: 
+  pdf_document: 
+    toc: yes
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+&nbsp;
+&nbsp;
+
+**Required Packages**: 
+
+- magrittr: To enable the use of the forward pipe operator
+- arulesViz: For visualization of association rules
+- RColorBrewer: Brewer color palettes for plots
+- arules: mining association rules
+
+
+
+\newpage
+
+```{r}
+# Clean the environment
+rm(list = ls())
+# Load Packages
+library(arules) 
+library(magrittr) 
+
+```
+
+# 1. Explore Raw Data
+
+Read in the csv file containing the raw transaction-item data.
+
+```{r}
+# Read in transaction dataset
+df<- read.csv("GroceriesRawdata.csv")
+```
+
+```{r}
+# Show the head of the raw dataset
+head(df)
+
+```
+
+1st column: indicates the transaction ID. 
+2nd column: is the item included in the transaction. 
+3rd & 4th columns: are item categories at different levels.
+The table above shows four items (citrus fruit, semi-finished bread, margarine, and ready soup) in the first transaction.
+
+Observe data structure:
+```{r}
+# Show the structure of the dataset
+str(df)
+```
+
+Convert TransactionID type to factor
+
+```{r}
+# Show the structure of the dataset
+df$TransactionID <- factor(df$TransactionID)
+```
+
+
+
+```{r}
+# Show the structure of the dataset
+str(df)
+```
+
+It is seen that the raw dataset contains 9835 transactions, a total of 169 different items. These items belong to 10 categories at level 1, and 55 categories at level 2.
+
+```{r}
+# Display categories of ItemCategory1 (level 1 categories)
+levels(df$ItemCategory1)
+```
+```{r}
+# Display categories of ItemCategory2 (level 2 categories)
+levels(df$ItemCategory2)
+```
+
+
+# 2. Derive Association Rules at Item Level
+
+Note that data frame objects need to be converted to transaction objects in order to make them usable in an association rules analysis that uses the arules package. The arules package hosts a read.transactions() method that reads a transaction data file from disk to create a transaction objects.
+
+```{r}
+transItem <- read.transactions(file = "GroceriesRawdata.csv", format = "single",sep = ",",
+                                cols = c(1,2), skip = 1)
+```
+
+```{r}
+# Check the type of transItem 
+class(transItem)
+```
+
+```{r}
+# Show the structure of the transactions dataset
+str(transItem)
+```
+
+```{r}
+# Show a summary of the transactions dataset
+transItem
+```
+Thus, the dataset contains 9,835 market baskets of 169 stock keeping units (SKUs). 
+
+
+Now, we determine the most frequent (top 20) items that get purchased among all transactions.
+```{r}
+# Drawitem frequency plot, using absolute frequency
+itemFrequencyPlot(transItem,topN=20,col="purple",type="absolute")
+
+```
+
+```{r}
+# Drawitem frequency plot, using relative frequency
+itemFrequencyPlot(transItem,topN=20,col="purple",type="relative")
+```
+
+Next, We show frequently bought items whose support >= 0.02.
+
+```{r, fig.width=8.5, fig.height= 11}
+# Examine frequency for each item with support greater than 0.02
+itemFrequencyPlot(transItem, support = 0.02, cex.names=0.8, xlim = c(0,0.3),
+  type = "relative", horiz = TRUE, col = "cyan", las = 1,
+  xlab = paste("Item Relative Frequency or Support")) 
+```
+
+It is important to analyze for association rules at item category level rather than SKU level in order to accuratley capture what group of items are purchased together by customers. It appears to be impossible deriving associations in the frequency plot above. Hence, we mine association rules at item category level as follows.
+
+# 3. Mining Association Rules at Item Category Level
+
+We conduct the mining using the itemCategory1 level. Note that the item category level of interest is stored in the 3rd column of the csv data file. Also, "rm.duplicates = TRUE" is used to remove duplicate transaction items belonging to the same category -- itemCategory1.
+
+```{r}
+
+transItem_cat1<- read.transactions(file = "GroceriesRawdata.csv", 
+                              format = "single", sep = ",",rm.duplicates = TRUE,
+                              cols = c(1,3), skip = 1)
+```
+
+```{r}
+# Show a summary of transItem_cat1 object
+transItem_cat1
+```
+
+There are 9,835 transactions of 10 item categories.
+
+Now, we visualize the top 4 item categories that are bought in those transactions.
+
+```{r}
+itemFrequencyPlot(transItem_cat1,topN=4,col="green",ylim = c(0,7000),type="absolute")
+```
+
+```{r}
+itemFrequencyPlot(transItem_cat1,topN=4,col="green",ylim = c(0,0.7),type="relative")
+```
+
+Draw all frequently bought item categories whose support >= 0.25.
+
+```{r, fig.height= 8.5, fig.width=12}
+itemFrequencyPlot(transItem_cat1, support = 0.25, cex.names=1, xlim = c(0,0.7),
+  type = "relative", horiz = TRUE, col = "cadetblue2", las = 1,
+  xlab = paste("Item Relative Frequency or Support"))
+```
+
+The apriori() function is used to generate association rules at different argument settings.
+```{r}
+# Mine frequent itemsets, association rules or association hyperedges using the Apriori algorithm.
+first.rules <- apriori(transItem_cat1, 
+                       parameter = list(support = 0.07, confidence = 0.7))#support = 0.001, confidence = 0.05 these are cut-off cond's to help eliminate some rules
+```
+
+Show summary of the 1st set of association rules.
+```{r}
+summary(first.rules)
+```
+
+It can be observed that the Apriori algorithm detects 20 rules from the dataset by using the parameters (minimun support=0.07, minimum confidence=0.7). 
+
+
+
+```{r}
+# Mine frequent itemsets, association rules or association hyperedges using the Apriori algorithm.
+second.rules <- apriori(transItem_cat1, 
+                        parameter = list(support = 0.01, confidence = 0.5))
+```
+```{r}
+# Show summary of the association rule
+summary(second.rules)
+```
+
+Now, we have 494 rules.
+
+A picture is worth a thousand words. We can visualize the association rules. To do that, we first need to load two packages: "arulesViz"" for association rules plot, and "RColorBrewer" for generating color palettes for graphs.
+
+```{r}
+library(arulesViz)  # data visualization of association rules
+library(RColorBrewer)  # color palettes for plots
+```
+
+Draw all 494 rules in a scatter plot.
+
+```{r, fig.width=8.5, fig.height=8.5}
+# Data visualization of association rules in scatter plot
+plot(second.rules, 
+     control=list(jitter=2, col = rev(brewer.pal(9, "Reds")[4:9])),
+     shading = "lift")   
+```
+
+Grouped matrix-based visualization of all association rules.
+
+```{r, fig.width=8, fig.height=13}
+# grouped matrix of rules 
+plot(second.rules, 
+     method="grouped", 
+     control=list(col = rev(brewer.pal(9, "Reds")[4:9]), main = ""))
+```
+
+Inspect the first 40 rules of the 494 rules.
+```{r}
+inspect(second.rules[1:40])
+```
+
+Suppose we want to identify products that are commonly purchased along with vegetables. We can use subset() method to select rules that satisfy certain criteria.
+
+```{r}
+# Select rules with vegetables as consequent (right-hand-side) item subsets
+vegie.rules <- subset(second.rules, subset = rhs %pin% "vegetables") 
+inspect(vegie.rules)  
+```
+
+We get 134 rules whose right hand side is "vegetables". The 41 rules are still too many to analyze. We choose to get the top 10 rules with highest lift from the 41 set.
+
+```{r}
+# Sort by lift to identify the top 10 rules
+top.vegie.rules <- vegie.rules %>% sort(decreasing = TRUE, by = "lift") %>% head(10)
+inspect(top.vegie.rules) 
+```
+
+Draw the graph of the 10 association rules.
+
+```{r, fig.width=11, fig.height=8.5}
+plot(top.vegie.rules, method="graph", 
+  control=list(type="items"), 
+  shading = "lift")
+```
+
+Represents the rules (or itemsets) as a parallel coordinate plot.
+
+```{r, fig.width=8.5, fig.height=8.5}
+plot(top.vegie.rules, method="paracoord", control=list(reorder=TRUE))
+```
+
